@@ -1,0 +1,33 @@
+# docker-compose.yml — поднимает кластер из 3 mygrep-server и сервис client,
+# который запускает `mygrep` против поднятых нод.
+#
+# Пример использования:
+#   docker compose up --build -d server1 server2 server3
+#   docker compose run --rm client -e ERROR -n /data/access.log
+#
+# Файлы для поиска монтируются из ./examples/data → /data.
+
+services:
+  server1:
+    build: .
+    command: ["-addr", ":8080"]
+    ports: ["9101:8080"]
+
+  server2:
+    build: .
+    command: ["-addr", ":8080"]
+    ports: ["9102:8080"]
+
+  server3:
+    build: .
+    command: ["-addr", ":8080"]
+    ports: ["9103:8080"]
+
+  client:
+    build:
+      context: .
+      target: client
+    depends_on: [server1, server2, server3]
+    entrypoint: ["/usr/local/bin/mygrep", "--servers", "server1:8080,server2:8080,server3:8080"]
+    volumes:
+      - ./examples/data:/data:ro
