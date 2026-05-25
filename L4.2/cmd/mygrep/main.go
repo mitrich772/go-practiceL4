@@ -86,7 +86,6 @@ func main() {
 		Timeout:      time.Duration(*timeoutSec) * time.Second,
 		ConnectRetry: time.Duration(*connectRetrySec) * time.Second,
 	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.Timeout+5*time.Second)
 	defer cancel()
 
@@ -94,10 +93,8 @@ func main() {
 	if err != nil {
 		exitWith(2, "error: %v\n", err)
 	}
-
 	out := bufio.NewWriter(os.Stdout)
 	defer out.Flush()
-
 	switch {
 	case flags.CountOnly:
 		fmt.Fprintln(out, res.Count)

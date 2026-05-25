@@ -1,0 +1,22 @@
+env: "local"
+
+storage:
+  host: localhost
+  port: 5434
+  user: postgres
+  password: postgres
+  dbname: calendar
+  sslmode: disable
+  max_open_conns: 10
+  max_idle_conns: 5
+  conn_max_lifetime: 30m
+
+http_server:
+  address: localhost:1235
+  timeout: 4s
+  idle_timeout: 60s
+
+workers:
+  archive_every: 1m
+  reminder_buffer: 100
+  log_buffer: 100
