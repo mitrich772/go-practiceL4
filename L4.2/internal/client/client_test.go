@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -128,6 +129,53 @@ func TestRun_BadRegexBubblesUp(t *testing.T) {
 	}
 	if len(res.ErrorsList) == 0 {
 		t.Error("want bad-regex errors collected")
+	}
+}
+
+// Имитирует docker compose сценарий: сервера начинают слушать с задержкой.
+// Клиент с ConnectRetry должен дождаться их и собрать кворум.
+func TestRun_ConnectRetryWaitsForLateStart(t *testing.T) {
+	// Подбираем свободный порт, биндим listener и сразу закрываем —
+	// гарантия, что порт пока никто не слушает. Через 300мс запускаем сервер.
+	pickPort := func() string {
+		l, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatalf("pickPort: %v", err)
+		}
+		addr := l.Addr().String()
+		l.Close()
+		return addr
+	}
+	addr := pickPort()
+
+	// Стартуем сервер с задержкой.
+	go func() {
+		time.Sleep(300 * time.Millisecond)
+		l, err := net.Listen("tcp", addr)
+		if err != nil {
+			return
+		}
+		s := &http.Server{Handler: server.New(server.Handler{Workers: 2})}
+		go func() { _ = s.Serve(l) }()
+		t.Cleanup(func() { _ = s.Close() })
+	}()
+
+	cfg := Config{
+		Servers:      []string{addr},
+		Timeout:      5 * time.Second,
+		ConnectRetry: 2 * time.Second,
+	}
+	res, err := Run(context.Background(), cfg,
+		protocol.GrepFlags{Pattern: "x", FixedString: true, CountOnly: true},
+		"", "x\ny\nx\n")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !res.QuorumMet {
+		t.Fatalf("expected quorum met after retry: %+v", res)
+	}
+	if res.Count != 2 {
+		t.Errorf("count: got %d, want 2", res.Count)
 	}
 }
 

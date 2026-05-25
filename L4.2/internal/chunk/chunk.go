@@ -1,8 +1,12 @@
+// Package chunk отвечает за разбиение входного потока на непрерывные
+// фрагменты, которые отправляются разным серверам.
 package chunk
 
 import "strings"
 
 // Chunk — кусок входных данных вместе с номером первой строки в исходнике
+// (1-based). Это позволяет серверу формировать корректные номера строк для
+// флага -n даже при произвольном порядке чанков.
 type Chunk struct {
 	StartLine int
 	Data      string
@@ -15,10 +19,7 @@ func Split(data string, n int) []Chunk {
 	}
 
 	normalized := strings.ReplaceAll(data, "\r\n", "\n")
-	// Срежем ровно один финальный перевод строки, чтобы "a\nb\n" дал две
-	// строки ["a","b"], а не три ["a","b",""]. Это соответствует семантике
-	// grep, который трактует завершающий '\n' как терминатор последней
-	// строки.
+
 	if strings.HasSuffix(normalized, "\n") {
 		normalized = normalized[:len(normalized)-1]
 	}

@@ -1,33 +1,37 @@
-# docker-compose.yml — поднимает кластер из 3 mygrep-server и сервис client,
-# который запускает `mygrep` против поднятых нод.
-#
-# Пример использования:
-#   docker compose up --build -d server1 server2 server3
-#   docker compose run --rm client -e ERROR -n /data/access.log
-#
-# Файлы для поиска монтируются из ./examples/data → /data.
+# docker-compose.yml — поднимает 3 узла mygrep-server.
+# Клиент mygrep запускается с хоста как обычная команда и шлёт запросы
+# на проброшенные порты 9101, 9102, 9103.
 
 services:
   server1:
     build: .
+    image: mygrep-server:local
     command: ["-addr", ":8080"]
     ports: ["9101:8080"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 1s
+      timeout: 1s
+      retries: 10
 
   server2:
     build: .
+    image: mygrep-server:local
     command: ["-addr", ":8080"]
     ports: ["9102:8080"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 1s
+      timeout: 1s
+      retries: 10
 
   server3:
     build: .
+    image: mygrep-server:local
     command: ["-addr", ":8080"]
     ports: ["9103:8080"]
-
-  client:
-    build:
-      context: .
-      target: client
-    depends_on: [server1, server2, server3]
-    entrypoint: ["/usr/local/bin/mygrep", "--servers", "server1:8080,server2:8080,server3:8080"]
-    volumes:
-      - ./examples/data:/data:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 1s
+      timeout: 1s
+      retries: 10

@@ -7,10 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"mygrep/internal/chunk"
@@ -23,6 +25,12 @@ type Config struct {
 	Quorum  int           // минимальное число успешных ответов; <=0 — N/2+1
 	Timeout time.Duration // таймаут на один HTTP-вызов
 	Client  *http.Client  // опционально: HTTP-клиент (для тестов)
+
+	// ConnectRetry — окно, в течение которого клиент повторяет попытки
+	// при сетевых ошибках уровня dial (DNS "no such host", connection
+	// refused). Удобно для сценариев типа docker compose, когда сервера
+	// ещё не успели подняться к моменту первого запроса. 0 — без ретраев.
+	ConnectRetry time.Duration
 }
 
 // Result — агрегированный результат распределённого запроса.
@@ -93,7 +101,7 @@ func Run(ctx context.Context, cfg Config, flags protocol.GrepFlags, fileName, in
 				Flags:     flags,
 				Data:      c.Data,
 			}
-			resp, err := postProcess(dispatchCtx, httpClient, addr, req)
+			resp, err := postProcessWithRetry(dispatchCtx, httpClient, addr, req, cfg.ConnectRetry)
 			select {
 			case resCh <- chanResult{idx: idx, server: addr, resp: resp, err: err}:
 			case <-dispatchCtx.Done():
@@ -158,6 +166,57 @@ func Run(ctx context.Context, cfg Config, flags protocol.GrepFlags, fileName, in
 	}
 
 	return result, nil
+}
+
+// postProcessWithRetry повторяет postProcess при кратковременных сетевых
+// ошибках (DNS lookup, connection refused) в течение connectRetry.
+// На остальных ошибках (HTTP 4xx/5xx, decode и т.п.) возвращается сразу.
+func postProcessWithRetry(ctx context.Context, c *http.Client, addr string, req protocol.ProcessRequest, connectRetry time.Duration) (protocol.ProcessResponse, error) {
+	if connectRetry <= 0 {
+		return postProcess(ctx, c, addr, req)
+	}
+	deadline := time.Now().Add(connectRetry)
+	backoff := 100 * time.Millisecond
+	for {
+		resp, err := postProcess(ctx, c, addr, req)
+		if err == nil {
+			return resp, nil
+		}
+		if !isTransientDialError(err) || time.Now().After(deadline) {
+			return protocol.ProcessResponse{}, err
+		}
+		select {
+		case <-ctx.Done():
+			return protocol.ProcessResponse{}, ctx.Err()
+		case <-time.After(backoff):
+		}
+		if backoff < time.Second {
+			backoff *= 2
+		}
+	}
+}
+
+// isTransientDialError распознаёт типичные ошибки старта (контейнер ещё не
+// поднят, DNS не отдаёт имя), которые имеет смысл повторить.
+func isTransientDialError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) {
+		return true
+	}
+	var opErr *net.OpError
+	if errors.As(err, &opErr) && opErr.Op == "dial" {
+		return true
+	}
+	if errors.Is(err, syscall.ECONNREFUSED) {
+		return true
+	}
+	// httptest/Linux иногда не выставляет syscall.Errno явно — fallback на текст.
+	msg := err.Error()
+	return strings.Contains(msg, "connection refused") ||
+		strings.Contains(msg, "no such host")
 }
 
 func postProcess(ctx context.Context, c *http.Client, addr string, req protocol.ProcessRequest) (protocol.ProcessResponse, error) {

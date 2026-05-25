@@ -1,3 +1,4 @@
+// Package protocol описывает обмен данными между клиентом mygrep и сервером
 package protocol
 
 // GrepFlags повторяет подмножество флагов GNU grep, которое поддерживает

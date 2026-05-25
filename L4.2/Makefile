@@ -1,27 +1,41 @@
-# Makefile для mygrep — собирает бинарники в ./bin и помогает запустить
-# демонстрационные сценарии.
+# Makefile для mygrep.
+# Главное:
+#   make up        — поднять 3 сервера в docker
+#   make down      — погасить
+#   make build     — собрать клиент в ./bin/mygrep
+#   make test      — unit-тесты
+#   make compare   — сравнение mygrep с системным grep
 
 GO        ?= go
 BIN_DIR   := bin
-SERVER_BIN := $(BIN_DIR)/mygrep-server
 CLIENT_BIN := $(BIN_DIR)/mygrep
 
-.PHONY: all build server client test vet fmt clean run compare bench tidy
+SERVERS := 127.0.0.1:9101,127.0.0.1:9102,127.0.0.1:9103
 
-all: build
+.PHONY: build up down restart compare test vet fmt tidy clean ps logs
 
-build: $(SERVER_BIN) $(CLIENT_BIN)
-
-$(SERVER_BIN): $(shell find cmd/mygrep-server internal -name '*.go') go.mod
-	@mkdir -p $(BIN_DIR)
-	$(GO) build -o $(SERVER_BIN) ./cmd/mygrep-server
+build: $(CLIENT_BIN)
 
 $(CLIENT_BIN): $(shell find cmd/mygrep internal -name '*.go') go.mod
 	@mkdir -p $(BIN_DIR)
 	$(GO) build -o $(CLIENT_BIN) ./cmd/mygrep
 
-server: $(SERVER_BIN)
-client: $(CLIENT_BIN)
+up:
+	docker compose up -d --wait --build server1 server2 server3
+
+down:
+	docker compose down -v
+
+restart: down up
+
+ps:
+	docker compose ps
+
+logs:
+	docker compose logs -f
+
+compare: build
+	./scripts/compare_with_grep.sh
 
 test:
 	$(GO) test -race ./...
@@ -34,15 +48,6 @@ fmt:
 
 tidy:
 	$(GO) mod tidy
-
-run: build
-	./scripts/run_local.sh
-
-compare: build
-	./scripts/compare_with_grep.sh
-
-bench: build
-	./scripts/bench.sh
 
 clean:
 	rm -rf $(BIN_DIR)

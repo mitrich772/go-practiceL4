@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
 # compare_with_grep.sh — построчно сравнивает вывод mygrep с системным grep
-# на нескольких тестовых паттернах. Скрипт сам поднимает 3 сервера, гоняет
-# серию запросов и в конце печатает результат: PASS / FAIL.
+# на нескольких тестовых паттернах.
 #
-# Использование: ./scripts/compare_with_grep.sh [-v]
-#   -v  печатать diff при расхождении.
+# Скрипт сам:
+#   - собирает бинарь mygrep,
+#   - поднимает 3 сервера через docker compose и ждёт их healthy,
+#   - гоняет суит запросов и сверяет каждый с системным grep,
+#   - в конце гасит сервера.
+#
+# Использование:
+#   ./scripts/compare_with_grep.sh        # короткий отчёт PASS/FAIL
+#   ./scripts/compare_with_grep.sh -v     # дополнительно показывает diff
 
 set -euo pipefail
 
@@ -15,46 +21,24 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BIN="$ROOT/bin"
 DATA="$ROOT/examples/data/access.log"
 WORDS="$ROOT/examples/data/words.txt"
-N=3
-BASE_PORT=${BASE_PORT:-9201}
+SERVERS="127.0.0.1:9101,127.0.0.1:9102,127.0.0.1:9103"
 
 mkdir -p "$BIN"
-echo ">> building binaries..."
-go build -C "$ROOT" -o "$BIN/mygrep-server" ./cmd/mygrep-server >/dev/null
-go build -C "$ROOT" -o "$BIN/mygrep"        ./cmd/mygrep        >/dev/null
+echo ">> building mygrep client..."
+go build -C "$ROOT" -o "$BIN/mygrep" ./cmd/mygrep >/dev/null
 
-PIDS=()
 cleanup() {
-  for pid in "${PIDS[@]:-}"; do
-    kill "$pid" 2>/dev/null || true
-    wait "$pid" 2>/dev/null || true
-  done
+  echo ">> stopping docker compose stack"
+  (cd "$ROOT" && docker compose down -v >/dev/null 2>&1 || true)
 }
 trap cleanup EXIT
 
-SERVERS=""
-for i in $(seq 0 $((N - 1))); do
-  PORT=$((BASE_PORT + i))
-  "$BIN/mygrep-server" -addr ":$PORT" >/tmp/mygrep-compare-$PORT.log 2>&1 &
-  PIDS+=("$!")
-  if [[ -n "$SERVERS" ]]; then SERVERS+=","; fi
-  SERVERS+="127.0.0.1:$PORT"
-done
-
-# Дождёмся готовности.
-for addr in ${SERVERS//,/ }; do
-  for _ in $(seq 1 50); do
-    if curl -fs "http://$addr/healthz" >/dev/null 2>&1; then break; fi
-    sleep 0.1
-  done
-done
+echo ">> starting 3 servers via docker compose..."
+(cd "$ROOT" && docker compose up -d --wait --build server1 server2 server3 >/dev/null)
 
 PASS=0
 FAIL=0
 
-# expected — вывод системного grep с теми же флагами.
-# actual   — вывод mygrep.
-# Сравниваем построчно (mygrep печатает строки в исходном порядке).
 run_case() {
   local title="$1"; shift
   local file="$1";  shift
@@ -62,8 +46,6 @@ run_case() {
   local mygrep_flags="$1"; shift
   local pattern="$1"
 
-  # Считаем эталон системным grep'ом. Включаем set +e: grep с no-match
-  # возвращает 1, и это нормально.
   set +e
   local expected
   expected=$(grep $grep_flags -- "$pattern" "$file")
@@ -90,11 +72,9 @@ run_case() {
 
 echo
 echo "== Сравнение mygrep vs системного grep =="
-echo "   data: $DATA"
 echo "   servers: $SERVERS"
 echo
 
-# Сюита тестов: каждый кейс — (название, файл, флаги-grep, флаги-mygrep, паттерн)
 run_case "fixed ERROR (default)"          "$DATA"  "-F"     "-F"     "ERROR"
 run_case "fixed ERROR -n"                 "$DATA"  "-Fn"    "-Fn"    "ERROR"
 run_case "fixed ERROR -c"                 "$DATA"  "-Fc"    "-Fc"    "ERROR"

@@ -1,3 +1,4 @@
+// Package server реализует HTTP-сервер обработки чанков.
 package server
 
 import (

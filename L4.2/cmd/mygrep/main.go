@@ -31,6 +31,7 @@ func main() {
 	serversFlag := flag.String("servers", "", "comma-separated list of server addresses host:port (required)")
 	quorumFlag := flag.Int("quorum", 0, "minimum number of servers that must respond successfully (default N/2+1)")
 	timeoutSec := flag.Int("timeout", 30, "request timeout in seconds")
+	connectRetrySec := flag.Int("connect-retry", 5, "how long (seconds) to keep retrying transient dial errors (DNS / connection refused) before giving up; useful when servers are still starting (e.g. docker compose)")
 	flag.Usage = usage
 	os.Args = append([]string{os.Args[0]}, expandShortFlags(os.Args[1:])...)
 	flag.Parse()
@@ -80,9 +81,10 @@ func main() {
 	}
 
 	cfg := client.Config{
-		Servers: serverList,
-		Quorum:  *quorumFlag,
-		Timeout: time.Duration(*timeoutSec) * time.Second,
+		Servers:      serverList,
+		Quorum:       *quorumFlag,
+		Timeout:      time.Duration(*timeoutSec) * time.Second,
+		ConnectRetry: time.Duration(*connectRetrySec) * time.Second,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.Timeout+5*time.Second)
@@ -93,6 +95,10 @@ func main() {
 		exitWith(2, "error: %v\n", err)
 	}
 
+	// Печать результата по совместимости с grep:
+	//   -c → только число
+	//   -l → имя файла (если есть совпадения)
+	//   иначе → строки (опционально с номером)
 	out := bufio.NewWriter(os.Stdout)
 	defer out.Flush()
 
