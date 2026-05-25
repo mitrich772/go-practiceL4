@@ -11,21 +11,19 @@
 - Docker + Docker Compose (для серверов)
 - Go 1.22+ (для сборки клиента)
 
-## Запуск — 3 шага
+## Запуск — 3 команды
 
 ```bash
 # 1. поднять 3 сервера в docker (ждёт healthy всех трёх)
-make up
-
-# 2. собрать клиент
-make build
-
-# 3. искать
-./bin/mygrep --servers 127.0.0.1:9101,127.0.0.1:9102,127.0.0.1:9103 \
-             -F -n -e ERROR examples/data/access.log
+docker compose up -d --wait
+# 2. запуск
+go run ./cmd/mygrep --servers 127.0.0.1:9101,127.0.0.1:9102,127.0.0.1:9103 -F -n -e ERROR examples/data/access.log
 ```
 
-Ожидаемый результат:
+> На PowerShell перенос строки делается обратной апострофой (`` ` ``),
+> а не `\`. Либо просто пиши команду одной строкой.
+
+Ожидаемый вывод:
 ```
 4:2025-05-25T10:00:04Z ERROR service=api request=/orders  status=500 err="db timeout"
 8:2025-05-25T10:00:08Z ERROR service=worker job=email err="smtp unreachable"
@@ -35,19 +33,23 @@ make build
 
 Погасить кластер:
 ```bash
-make down
+docker compose down
 ```
 
 ---
 
 ## Сравнение с системным `grep`
 
+Скрипт сам поднимает 3 сервера, прогоняет 11 кейсов на разных флагах,
+сверяет вывод побайтно с системным `grep` и в конце гасит сервера.
+
 ```bash
-make compare
+./scripts/compare_with_grep.sh
 ```
 
-Скрипт сам поднимает 3 сервера, прогоняет 11 кейсов на разных флагах,
-сверяет вывод побайтно с системным `grep` и в конце гасит сервера. Итог:
+> На Windows требует bash — запускай через Git Bash или WSL.
+
+Итог:
 
 ```
 == Сравнение mygrep vs системного grep ==
@@ -70,7 +72,7 @@ make compare
 ## Unit-тесты
 
 ```bash
-make test       # go test -race ./...
+go test -race ./...
 ```
 
 Покрытие: разбиение на чанки, matcher, HTTP-обработчик, клиентский кворум,
@@ -134,18 +136,15 @@ mygrep --servers host1:port,host2:port,... -e PATTERN [flags] [file]
 
 ---
 
-## Полезные `make`-цели
+## Полезные docker compose команды
 
-| Команда       | Что делает                                       |
-|---------------|--------------------------------------------------|
-| `make up`     | docker compose поднимает 3 сервера (с healthy)   |
-| `make down`   | гасит и удаляет контейнеры                       |
-| `make ps`     | состояние контейнеров                            |
-| `make logs`   | логи серверов в реальном времени                 |
-| `make build`  | собирает `./bin/mygrep`                          |
-| `make test`   | `go test -race ./...`                            |
-| `make compare`| 11 кейсов сравнения с системным `grep`           |
-| `make clean`  | удаляет `./bin/`                                 |
+```bash
+docker compose up -d --wait     # поднять и дождаться healthy
+docker compose ps               # состояние контейнеров
+docker compose logs -f          # логи серверов в реальном времени
+docker compose down -v          # погасить и удалить
+docker compose restart server1  # перезапустить одну ноду (демо отказа)
+```
 
 ---
 
@@ -169,5 +168,5 @@ mygrep --servers host1:port,host2:port,... -e PATTERN [flags] [file]
 │   └── compare_with_grep.sh
 ├── Dockerfile              # образ mygrep-server
 ├── docker-compose.yml      # 3 ноды на портах 9101/9102/9103
-└── Makefile
+└── go.mod
 ```

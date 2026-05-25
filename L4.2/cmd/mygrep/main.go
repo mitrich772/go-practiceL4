@@ -95,10 +95,6 @@ func main() {
 		exitWith(2, "error: %v\n", err)
 	}
 
-	// Печать результата по совместимости с grep:
-	//   -c → только число
-	//   -l → имя файла (если есть совпадения)
-	//   иначе → строки (опционально с номером)
 	out := bufio.NewWriter(os.Stdout)
 	defer out.Flush()
 
