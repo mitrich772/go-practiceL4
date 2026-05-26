@@ -1,0 +1,17 @@
+goos: windows
+goarch: amd64
+pkg: L4.5/internal/stats
+cpu: AMD Ryzen 5 8400F 6-Core Processor             
+BenchmarkCalculateStats_100-12      	 1000000	      1085 ns/op	     896 B/op	       1 allocs/op
+BenchmarkCalculateStats_1000-12     	   67182	     16408 ns/op	    8192 B/op	       1 allocs/op
+BenchmarkCalculateStats_10000-12    	    3261	    371343 ns/op	   81945 B/op	       1 allocs/op
+PASS
+ok  	L4.5/internal/stats	4.017s
+goos: windows
+goarch: amd64
+pkg: L4.5/internal/web
+cpu: AMD Ryzen 5 8400F 6-Core Processor             
+BenchmarkStatsHandler_1000-12     	   14088	     85442 ns/op	   89701 B/op	    2058 allocs/op
+BenchmarkStatsHandler_10000-12    	    1161	   1074360 ns/op	 1127274 B/op	   19985 allocs/op
+PASS
+ok  	L4.5/internal/web	3.930s
