@@ -4,13 +4,12 @@ import (
 	"errors"
 	"math"
 	"runtime"
-	"sort"
 	"sync"
 )
 
 var ErrEmptyInput = errors.New("numbers must not be empty")
 
-const parallelThreshold = 10000
+const parallelThreshold = 50000
 
 type Result struct {
 	Count int     `json:"count"`
@@ -124,20 +123,74 @@ func calculateParallel(numbers []float64) Result {
 
 func percentile95(numbers []float64) float64 {
 	values := clone(numbers)
-	sort.Float64s(values)
+	return quickselect(values, percentileIndex(len(values)))
+}
 
-	index := int(math.Ceil(float64(len(values))*0.95)) - 1
+func percentileIndex(length int) int {
+	index := int(math.Ceil(float64(length)*0.95)) - 1
 	if index < 0 {
 		index = 0
 	}
-	if index >= len(values) {
-		index = len(values) - 1
+	if index >= length {
+		index = length - 1
 	}
-	return values[index]
+	return index
 }
 
 func clone(numbers []float64) []float64 {
 	values := make([]float64, len(numbers))
 	copy(values, numbers)
 	return values
+}
+
+func quickselect(values []float64, target int) float64 {
+	left := 0
+	right := len(values) - 1
+
+	for left < right {
+		pivot := partition(values, left, right)
+		switch {
+		case pivot == target:
+			return values[pivot]
+		case pivot < target:
+			left = pivot + 1
+		default:
+			right = pivot - 1
+		}
+	}
+
+	return values[left]
+}
+
+func partition(values []float64, left, right int) int {
+	pivotIndex := medianOfThree(values, left, right)
+	values[pivotIndex], values[right] = values[right], values[pivotIndex]
+	pivotValue := values[right]
+	store := left
+
+	for i := left; i < right; i++ {
+		if values[i] < pivotValue {
+			values[store], values[i] = values[i], values[store]
+			store++
+		}
+	}
+
+	values[right], values[store] = values[store], values[right]
+	return store
+}
+
+func medianOfThree(values []float64, left, right int) int {
+	middle := left + (right-left)/2
+
+	if values[left] > values[middle] {
+		values[left], values[middle] = values[middle], values[left]
+	}
+	if values[left] > values[right] {
+		values[left], values[right] = values[right], values[left]
+	}
+	if values[middle] > values[right] {
+		values[middle], values[right] = values[right], values[middle]
+	}
+
+	return middle
 }
